@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProVision AI Terminal</title>
+    <title>ProVision Terminal</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body { background-color: #0f172a; color: #ffffff; font-family: 'Arial', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
@@ -19,29 +19,38 @@
         .signal-box { margin-top: 20px; padding: 15px; border-radius: 8px; background: #0f172a; border: 1px dashed #334155; }
         .signal-text { font-size: 22px; font-weight: bold; margin: 10px 0; }
         .green { color: #00ff88; } .red { color: #ff4444; } .yellow { color: #facc15; }
+        .loader { color: #38bdf8; font-weight: bold; font-size: 18px; }
     </style>
 </head>
 <body>
 
-    <div class="container" id="login-section">
+    <div class="container" id="loading-section">
+        <div class="loader">Verifying Access... 🔄</div>
+    </div>
+
+    <div class="container hidden" id="login-section">
         <h2>⚙️ ProVision AI</h2>
         <p>Enter credentials to request VIP Access</p>
         <input type="email" id="email" placeholder="Enter Email Address" required>
-        <input type="password" id="password" placeholder="Enter Secure Password" required>
-        <button onclick="requestAccess()">Request Access</button>
+        <input type="password" id="password" placeholder="Enter VIP Code / Password" required>
+        <button onclick="requestAccess()">Submit Request</button>
+    </div>
+
+    <div class="container hidden" id="pending-section">
+        <h2>⏳ Pending Approval</h2>
+        <p>Admin is reviewing your credentials. You will receive a message in Telegram once approved.</p>
     </div>
 
     <div class="container hidden" id="dashboard-section">
         <h2>📡 Radar Dashboard</h2>
-        <p>Select parameters to scan live market</p>
+        <p id="user-limits">Credits: Loading...</p>
         
         <select id="pair">
-            <option value="EURUSD">🇪🇺 EUR/USD (Euro / US Dollar)</option>
-            <option value="GBPUSD">🇬🇧 GBP/USD (British Pound / US Dollar)</option>
-            <option value="USDJPY">🇯🇵 USD/JPY (US Dollar / Japanese Yen)</option>
-            <option value="AUDUSD">🇦🇺 AUD/USD (Australian Dollar / USD)</option>
+            <option value="EURUSD">🇪🇺 EUR/USD</option>
+            <option value="GBPUSD">🇬🇧 GBP/USD</option>
+            <option value="USDJPY">🇯🇵 USD/JPY</option>
+            <option value="AUDUSD">🇦🇺 AUD/USD</option>
         </select>
-
         <select id="timeframe">
             <option value="1m">⏱️ 1 Minute Expiry</option>
             <option value="5m">⏱️ 5 Minute Expiry</option>
@@ -51,7 +60,7 @@
         <button id="scan-btn" onclick="getSignal()">Scan Live Market</button>
 
         <div id="signal-result" class="signal-box hidden">
-            <div id="loader" style="color: #38bdf8;">Analyzing Institutional Volume... ⏳</div>
+            <div id="loader" class="loader">Analyzing Market Volume... ⏳</div>
             <div id="final-signal" class="hidden">
                 <div class="signal-text" id="signal-direction"></div>
                 <p id="signal-info"></p>
@@ -63,57 +72,80 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
         
-        // Asli Render Backend URL yahan daalna hai
-        const BACKEND_URL = "https://aliza-trading-bot.onrender.com"; 
+        // --- IMPORTANT: REPLACE WITH YOUR RENDER APP URL ---
+        const BACKEND_URL = "https://YOUR_RENDER_APP_NAME.onrender.com"; 
+        const userId = tg.initDataUnsafe?.user?.id;
 
+        function showSection(sectionId) {
+            document.getElementById("loading-section").classList.add("hidden");
+            document.getElementById("login-section").classList.add("hidden");
+            document.getElementById("pending-section").classList.add("hidden");
+            document.getElementById("dashboard-section").classList.add("hidden");
+            document.getElementById(sectionId).classList.remove("hidden");
+        }
+
+        // 1. Check User Status on App Load
+        async function checkUserStatus() {
+            if (!userId) {
+                document.getElementById("loading-section").innerHTML = "Error: Please open inside Telegram.";
+                return;
+            }
+            try {
+                let response = await fetch(`${BACKEND_URL}/api/status`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                let data = await response.json();
+                
+                if (data.status === "unregistered") {
+                    showSection("login-section");
+                } else if (data.status === "pending") {
+                    showSection("pending-section");
+                } else if (data.status === "approved") {
+                    document.getElementById("user-limits").innerText = `Signals Left: ${data.limit}`;
+                    showSection("dashboard-section");
+                } else {
+                    document.getElementById("loading-section").innerHTML = "🚫 Account Banned or Locked.";
+                }
+            } catch (e) {
+                document.getElementById("loading-section").innerHTML = "Connection Error to Server.";
+            }
+        }
+
+        // 2. Submit Login Details
         function requestAccess() {
             let email = document.getElementById("email").value;
             let password = document.getElementById("password").value;
-            if (email === "" || password === "") return tg.showAlert("Please fill details.");
+            if (!email || !password) return tg.showAlert("Please fill details.");
 
             let data = { type: "login", email: email, password: password };
-            tg.sendData(JSON.stringify(data)); // Telegram chat mein bhejega approval ke liye
-            document.getElementById("login-section").innerHTML = "<h2>⏳ Request Sent!</h2><p>Wait for Admin approval. Re-open app once approved.</p>";
+            tg.sendData(JSON.stringify(data)); // Sends data to python bot
+            showSection("pending-section"); // Immediately lock the screen
         }
 
-        // Demo ke liye, agar user ka Telegram ID set hai, toh hum maan lete hain wo logged in dashboard dekhna chahta hai
-        // Real logic mein hum server se check karenge. Abhi UI transition dekhte hain:
-        
-        // Jab user Approve ho jaye, wo app kholdga toh ye dashboard dikhega.
-        // For testing, call showDashboard() in browser console.
-        function showDashboard() {
-            document.getElementById("login-section").classList.add("hidden");
-            document.getElementById("dashboard-section").classList.remove("hidden");
-        }
-
+        // 3. Get Signal from Dashboard
         async function getSignal() {
             let pair = document.getElementById("pair").value;
             let tf = document.getElementById("timeframe").value;
             let btn = document.getElementById("scan-btn");
             let resultBox = document.getElementById("signal-result");
-            let loader = document.getElementById("loader");
-            let finalSignal = document.getElementById("final-signal");
             
             btn.disabled = true;
             resultBox.classList.remove("hidden");
-            loader.classList.remove("hidden");
-            finalSignal.classList.add("hidden");
+            document.getElementById("loader").classList.remove("hidden");
+            document.getElementById("final-signal").classList.add("hidden");
 
             try {
                 let response = await fetch(`${BACKEND_URL}/api/signal`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ 
-                        user_id: tg.initDataUnsafe?.user?.id || "admin_test", 
-                        pair: pair, 
-                        timeframe: tf 
-                    })
+                    body: JSON.stringify({ user_id: userId, pair: pair, timeframe: tf })
                 });
-                
                 let data = await response.json();
                 
-                loader.classList.add("hidden");
-                finalSignal.classList.remove("hidden");
+                document.getElementById("loader").classList.add("hidden");
+                document.getElementById("final-signal").classList.remove("hidden");
                 
                 let sigDir = document.getElementById("signal-direction");
                 let sigInfo = document.getElementById("signal-info");
@@ -128,14 +160,13 @@
                     sigInfo.innerHTML = data.text;
                 }
             } catch (err) {
-                loader.innerHTML = "❌ Server Error. Check Render Backend.";
+                document.getElementById("loader").innerHTML = "❌ Failed to fetch signal.";
             }
             btn.disabled = false;
         }
 
-        // Auto-show dashboard agar App open hui aur user ke paas data hai
-        // (Is logic ko aur refine karenge based on user flow)
-        setTimeout(showDashboard, 1000); // For now, auto load dashboard for testing UI
+        // Start checking status as soon as app opens
+        window.onload = checkUserStatus;
     </script>
 </body>
 </html>
